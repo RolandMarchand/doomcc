@@ -5,6 +5,6 @@
 **/a.out
 /tmp*
 /thirdparty
-/chibicc
+/doomcc
 /test/*.exe
 /stage2

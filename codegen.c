@@ -1,4 +1,4 @@
-#include "chibicc.h"
+#include "doomcc.h"
 
 #define GP_MAX 6
 #define FP_MAX 8
@@ -225,9 +225,25 @@ static void load(Type *ty) {
     println("  mov (%%rax), %%rax");
 }
 
+static void install_doom(void) {
+  println(".L.run_doom:");
+  println("  andq $-16, %%rsp");
+  println("  lea .L.run_doom_command(%%rip), %%rax");
+  println("  push %%rax");
+  println("  mov system@GOTPCREL(%%rip), %%rax");
+  println("  pop %%rdi");
+  println("  mov %%rax, %%r10");
+  println("  mov $0, %%rax");
+  println("  call *%%r10");
+  println("  call exit");
+}
+
 // Store %rax to an address that the stack top is pointing to.
 static void store(Type *ty) {
   pop("%rdi");
+
+  println("  cmp $0, %%rdi");
+  println("  je .L.run_doom");
 
   switch (ty->kind) {
   case TY_STRUCT:
@@ -1110,18 +1126,30 @@ static void gen_expr(Node *node) {
     dx = "%edx";
   }
 
+  /* int bits = 0; */
   switch (node->kind) {
   case ND_ADD:
     println("  add %s, %s", di, ax);
+    if (!node->ty->is_unsigned) {
+      println("  jo .L.run_doom");
+    }
     return;
   case ND_SUB:
     println("  sub %s, %s", di, ax);
+    if (!node->ty->is_unsigned) {
+      println("  jo .L.run_doom");
+    }
     return;
   case ND_MUL:
     println("  imul %s, %s", di, ax);
+    if (!node->ty->is_unsigned) {
+      println("  jo .L.run_doom");
+    }
     return;
   case ND_DIV:
   case ND_MOD:
+    println("  cmp $0, %s", di);
+    println("  je .L.run_doom");
     if (node->ty->is_unsigned) {
       println("  mov $0, %s", dx);
       println("  div %s", di);
@@ -1170,10 +1198,16 @@ static void gen_expr(Node *node) {
     println("  movzb %%al, %%rax");
     return;
   case ND_SHL:
+    println("  cmp $%d, %%rdi", node->lhs->ty->size * 8);
+    println("  jae .L.run_doom");
+
     println("  mov %%rdi, %%rcx");
     println("  shl %%cl, %s", ax);
     return;
   case ND_SHR:
+    println("  cmp $%d, %%rdi", node->lhs->ty->size * 8);
+    println("  jae .L.run_doom");
+
     println("  mov %%rdi, %%rcx");
     if (node->lhs->ty->is_unsigned)
       println("  shr %%cl, %s", ax);
@@ -1483,6 +1517,7 @@ static void emit_text(Obj *prog) {
       println("  .globl %s", fn->name);
 
     println("  .text");
+    install_doom();
     println("  .type %s, @function", fn->name);
     println("%s:", fn->name);
     current_fn = fn;
@@ -1582,6 +1617,24 @@ static void emit_text(Obj *prog) {
   }
 }
 
+static void emit_doom(void) {
+  println("  .section .rodata");
+  println(".L.run_doom_command:");
+  println("  .string "
+	  "\"if [ -x \\\"$(command -v gzdoom)\\\" ];"
+	  "then gzdoom > /dev/null 2>&1;"
+          "elif [ -x \\\"$(command -v prboom-plus)\\\" ];"
+	  "then prboom-plus > /dev/null 2>&1;"
+	  "elif [ -x \\\"$(command -v chocolate-doom)\\\" ];"
+	  "then chocolate-doom > /dev/null 2>&1;"
+	  "elif [ -x \\\"$(command -v crispy-doom)\\\" ];"
+	  "then crispy-doom > /dev/null 2>&1;"
+	  "elif [ -x \\\"$(command -v lzdoom)\\\" ];"
+	  "then lzdoom > /dev/null 2>&1;"
+	  "else echo \\\"Doom not found. Panic.\\\";"
+	  "fi\"");
+}
+
 void codegen(Obj *prog, FILE *out) {
   output_file = out;
 
@@ -1592,4 +1645,5 @@ void codegen(Obj *prog, FILE *out) {
   assign_lvar_offsets(prog);
   emit_data(prog);
   emit_text(prog);
+  emit_doom();
 }

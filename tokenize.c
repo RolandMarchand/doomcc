@@ -1,4 +1,4 @@
-#include "chibicc.h"
+#include "doomcc.h"
 
 // Input file
 static File *current_file;
@@ -215,7 +215,7 @@ static int read_escaped_char(char **new_pos, char *p) {
   // This fact has huge implications not only for the correctness
   // of the compiler but also for the security of the generated code.
   // For more info, read "Reflections on Trusting Trust" by Ken Thompson.
-  // https://github.com/rui314/chibicc/wiki/thompson1984.pdf
+  // https://github.com/rolandmarchand/doomcc/wiki/thompson1984.pdf
   switch (*p) {
   case 'a': return '\a';
   case 'b': return '\b';
